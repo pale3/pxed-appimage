@@ -1,0 +1,41 @@
+app: pxed
+union: true
+
+ingredients:
+  dist: stretch
+  sources:
+    - deb http://mirror.yandex.ru/debian/ stretch main
+  packages:
+    - dnsmasq
+
+script:
+  - echo 1.0 > VERSION
+  - wget -c -O dnsmasq.svg https://upload.wikimedia.org/wikipedia/commons/2/2c/Dnsmasq_icon.svg
+  - cat > dnsmasq.desktop <<\EOF
+  - [Desktop Entry]
+  - Type=Application
+  - Terminal=true
+  - Name=pxed
+  - Exec=pxed
+  - Categories=Development;
+  - Icon=dnsmasq
+  - EOF
+  - cat > etc/pxed.conf <<\EOF
+  - port=0
+  - no-resolv
+  - no-poll
+  - no-hosts
+  - bootp-dynamic
+  - dhcp-option=3,0.0.0.0
+  - dhcp-vendorclass=set:stage1,"AM335x ROM"
+  - dhcp-vendorclass=set:stage2,"AM335x U-Boot SPL"
+  - dhcp-vendorclass=set:stage3,"U-Boot.armv7"
+  - dhcp-boot=tag:stage1,u-boot-spl.bin
+  - dhcp-boot=tag:stage2,u-boot.img
+  - dhcp-boot=tag:stage3,image-ramdisk.itb
+  - tftp-no-blocksize
+  - dhcp-script=/var/run/pxed-dhcp-hook
+  - EOF
+  - ls ../dnsmasq_*.deb | cut -d "_" -f 2 | head -n 1 > dnsmasq-VERSION
+  - cp ../../pxed-run AppRun
+  - chmod a+x AppRun

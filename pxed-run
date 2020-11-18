@@ -1,0 +1,123 @@
+#! /bin/bash
+
+this=$$
+appname="pxed"
+pidfile="/var/run/$appname.pid"
+logfile="/var/run/$appname.log"
+
+if [[ $UID -ne 0 ]]; then
+	echo "$appname: needs root privileges"; exit 1;
+fi
+
+: ${PXED_DEBUG:=""}
+
+HERE="$(dirname "$(readlink -f "${0}")")"
+export UNION_PRELOAD="${HERE}"
+#export LD_PRELOAD="${HERE}/libunionpreload.so"
+export PATH="${HERE}"/usr/bin/:"${HERE}"/usr/sbin/:"${HERE}"/usr/games/:"${HERE}"/bin/:"${HERE}"/sbin/:"${PATH}"
+export LD_LIBRARY_PATH="${HERE}"/usr/lib/:"${HERE}"/usr/lib/i386-linux-gnu/:"${HERE}"/usr/lib/x86_64-linux-gnu/:"${HERE}"/usr/lib32/:"${HERE}"/usr/lib64/:"${HERE}"/lib/:"${HERE}"/lib/i386-linux-gnu/:"${HERE}"/lib/x86_64-linux-gnu/:"${HERE}"/lib32/:"${HERE}"/lib64/:"${LD_LIBRARY_PATH}"
+export XDG_DATA_DIRS="${HERE}"/usr/share/:"${XDG_DATA_DIRS}"
+
+cat << 'EOF' > /var/run/pxed-dhcp-hook
+#! /bin/bash
+if [[ $1 == "tftp" ]]; then
+	echo "$(/bin/date +"%b %d %H:%M:%S") we sent $4 of $2 bytes to $3"
+fi
+EOF
+
+chmod +x /var/run/pxed-dhcp-hook
+
+die(){
+    local msg="$1" sign=$2 pid=$3
+    echo "$1" >&2; kill $sign $pid
+}
+
+is_arg_valid(){
+    if [[ -z "$2" ]]; then
+        die "Missing arg $1" -10 $this
+    fi
+    echo $2
+}
+
+usage(){
+cat << EOF
+this-version: $(<"$HERE/VERSION")
+dnsmasq: $(<"$HERE/dnsmasq-VERSION")
+
+$appname: <opt> <arg>
+ -i --iface*           used interface, E.g eth0
+ -a --listen-address   listen on IP address, E.g 10.10.10.1
+ -F --dhcp-range*      DHCP offer range with lease time, E.g 10.10.10.2-10.10.10.100,12h
+ -T --tftp-root*       TFTP root dir location, E.g /srv/tftp
+ -D --daemon           start as daemon
+ -s --status           print status of app
+ -k --kill-daemon      kill running daemon
+ -v --version          print version
+ -h --help             this screen
+
+info:
+ - arguments marked with (*) are mandatory
+ - requires root privileges
+
+Example:
+ # $appname -i br0 -F 10.10.10.2,10.10.10.100,12h -T /srv/tftp
+EOF
+}
+
+opts=(-C ${HERE}/etc/$appname.conf --no-daemon --quiet-dhcp)
+while true; do
+  case $1 in
+    -i| --iface) iface=$(is_arg_valid $1 "$2"); shift 2;;
+    -a| --listen-address) listenaddr=$(is_arg_valid $1 "$2"); opts+=(--listen-address=$listenaddr); shift 2 ;;
+    -F| --dhcp-range) dhcprange=$(is_arg_valid $1 "$2"); shift 2;;
+    -T| --tftp-root) tftproot=$(is_arg_valid $1 "$2"); shift 2;;
+    -D| --daemon ) # this arg doesnt exist within dnsmasq
+	    	optdel=${opts[@]/--no-daemon}
+	    	opts=($optdel); 
+		break ;; 
+    -s| --status ) 
+    	    if [[ -f $pidfile ]]; then
+	    	echo "pid: $(<$pidfile)";
+		echo "listening on: "
+		netstat -lpn -4 | awk 'BEGIN {FS="[ :]+"};/$appname/{print " - " $1 " " $4 ":" $5}'
+		exit 1;
+    	    fi 
+	    echo "$appname: nothing to show here, yet"; exit 1 ;;
+    -k| --kill-daemon )
+	    if [[ -f $pidfile && -d /proc/$(<$pidfile) ]]; then
+		die "$appname: daemon killed" -9 $(<$pidfile);
+		rm -rf $pidfile; exit 1;
+            fi
+	    echo "$appname: no such process"; exit 1;
+	    ;;
+    -v| --version ) echo "$appname: $(<"$HERE/VERSION")"; exit 1;;
+    -h| --help ) usage; exit 1 ;;
+    * ) break ;;
+  esac
+done
+
+if [[ -f $pidfile && -d /proc/$(<$pidfile) ]]; then
+	echo "$appname: already running"; exit 1;
+fi
+
+if [[ -z $iface || -z $dhcprange || -z $tftproot ]]; then
+	echo "$appname: missing mandatory arguments!"; exit 1;
+fi
+
+if [[ ! -z $PXED_DEBUG ]]; then
+	optdel=${opts[@]/--quiet-dhcp}
+	opts=($optdel --log-dhcp);
+else
+	exec 2>/dev/null
+fi
+
+known_ifaces=$(ls -1 /sys/class/net | sed "/$iface/d" | tr -t '\n' ',')
+opts+=(--interface=$iface \
+       --except-interface=${known_ifaces::-1} \
+       --dhcp-range=$dhcprange \
+       --enable-tftp=$iface \
+       --tftp-root=$tftproot \
+       --pid-file=$pidfile \
+       --log-facility=$logfile)
+
+exec -a $appname ${HERE}/usr/sbin/dnsmasq "${opts[@]}" 
