@@ -1,4 +1,4 @@
-#! /bin/bash
+#! /bin/bash -E
 
 this=$$
 appname="pxed"
@@ -18,14 +18,19 @@ export PATH="${HERE}"/usr/bin/:"${HERE}"/usr/sbin/:"${HERE}"/usr/games/:"${HERE}
 export LD_LIBRARY_PATH="${HERE}"/usr/lib/:"${HERE}"/usr/lib/i386-linux-gnu/:"${HERE}"/usr/lib/x86_64-linux-gnu/:"${HERE}"/usr/lib32/:"${HERE}"/usr/lib64/:"${HERE}"/lib/:"${HERE}"/lib/i386-linux-gnu/:"${HERE}"/lib/x86_64-linux-gnu/:"${HERE}"/lib32/:"${HERE}"/lib64/:"${LD_LIBRARY_PATH}"
 export XDG_DATA_DIRS="${HERE}"/usr/share/:"${XDG_DATA_DIRS}"
 
+postportem(){ rm -f $pidfile;}
+trap postportem SIGINT SIGTERM ERR
+
 cat << 'EOF' > /var/run/pxed-dhcp-hook
 #! /bin/bash
 if [[ $1 == "tftp" ]]; then
-	echo "$(/bin/date +"%b %d %H:%M:%S") we sent $4 of $2 bytes to $3"
+	echo "[$(/bin/date +"%b %d %H:%M:%S")] tftp: we sent $4 of $2 bytes to $3"
 fi
 EOF
 
 chmod +x /var/run/pxed-dhcp-hook
+
+printline(){ echo "[$(/bin/date +"%b %d %H:%M:%S")] $1"; }
 
 die(){
     local msg="$1" sign=$2 pid=$3
@@ -39,29 +44,70 @@ is_arg_valid(){
     echo $2
 }
 
+header(){
+cat << EOL
+___  _  _ ____ ___
+|__]  \/  |___ |  \ v$(<"$HERE/VERSION") ($(<"$HERE/pxed-buildtime"))
+|    _/\_ |___ |__/ (Fire And Forget)
+
+EOL
+}
+
 usage(){
-cat << EOF
+cat << EOL
 this-version: $(<"$HERE/VERSION")
 dnsmasq: $(<"$HERE/dnsmasq-VERSION")
+fswatch: $(<"$HERE/fswatch-VERSION")
 
 $appname: <opt> <arg>
  -i --iface*           used interface, E.g eth0
  -a --listen-address   listen on IP address, E.g 10.10.10.1
- -F --dhcp-range*      DHCP offer range with lease time, E.g 10.10.10.2-10.10.10.100,12h
- -T --tftp-root*       TFTP root dir location, E.g /srv/tftp
+ -F --dhcp-range       DHCP offer range with lease time, E.g 10.10.10.2-10.10.10.100,24h, default --interface CIDR
+ -T --tftp-root        TFTP root dir location, default /srv/tftp
  -D --daemon           start as daemon
  -s --status           print status of app
  -k --kill-daemon      kill running daemon
  -v --version          print version
  -h --help             this screen
 
-info:
- - arguments marked with (*) are mandatory
- - requires root privileges
+fswatch: (optional)
+ -w --watch*           path or file to watch, can use glob E.g /path/to/*.tar
+ -m --watch-method     possible methods are default poll_monitor or inotify_monitor, default poll_monitor
+ -e --watch-on-changed on watch item's change do something
 
-Example:
+info:
+ - requires root privileges
+ - arguments marked with (*) are mandatory
+ - useful variables for --watch-on-changed are \$watch, \$entry, \$tftproot, however eval is used
+   here thus, you can do a way more. If you plan to use glob, make sure that --watch is quoted
+
+Examples:
  # $appname -i br0 -F 10.10.10.2,10.10.10.100,12h -T /srv/tftp
-EOF
+ # $appname -i br0 -F 10.10.10.2,10.10.10.100,12h -T /srv/tftp --watch /s/l/image.tar -e "cp \$entry /some/location"
+ # $appname -i usb0 --watch "/s/l/im*.tar" -e "cp \$entry /some/location"
+EOL
+}
+
+watcher(){
+
+    watch_method=${watch_method:="poll_monitor"}
+    if [[ $watch_method != "poll_monitor" && $watch_method != "inotify_monitor" ]]; then
+        echo "$appname: invalid --watch-method specified!"; exit 1;
+    fi
+
+    printline "fswatch: watching '$watch', using '$watch_method'"
+    /usr/bin/fswatch -m $watch_method $watch | while read entry; do
+
+        if [[ -z $watch_on_changed ]]; then
+            printline "fswatch: changed entry '$entry'"
+            continue
+        fi
+
+        printline "fswatch: changed entry '$entry'"
+        printline "fswatch: executing '$watch_on_changed'"
+        eval $watch_on_changed
+        printline "fswatch: execution returned $?"
+    done
 }
 
 opts=(-C ${HERE}/etc/$appname.conf --no-daemon --quiet-dhcp)
@@ -70,26 +116,29 @@ while true; do
     -i| --iface) iface=$(is_arg_valid $1 "$2"); shift 2;;
     -a| --listen-address) listenaddr=$(is_arg_valid $1 "$2"); opts+=(--listen-address=$listenaddr); shift 2 ;;
     -F| --dhcp-range) dhcprange=$(is_arg_valid $1 "$2"); shift 2;;
-    -T| --tftp-root) tftproot=$(is_arg_valid $1 "$2"); shift 2;;
+    -T| --tftp-root) tftproot=$(is_arg_valid $1 "$2"); shift 2 ;;
     -D| --daemon ) # this arg doesnt exist within dnsmasq
 	    	optdel=${opts[@]/--no-daemon}
-	    	opts=($optdel); 
-		break ;; 
-    -s| --status ) 
+	    	opts=($optdel);
+		break ;;
+    -s| --status )
     	    if [[ -f $pidfile ]]; then
-	    	echo "pid: $(<$pidfile)";
-		echo "listening on: "
-		netstat -lpn -4 | awk 'BEGIN {FS="[ :]+"};/$appname/{print " - " $1 " " $4 ":" $5}'
-		exit 1;
-    	    fi 
-	    echo "$appname: nothing to show here, yet"; exit 1 ;;
+	    	    echo "pid: $(<$pidfile)";
+		        echo "listening on: "
+		        netstat -lpn -4 | awk 'BEGIN {FS="[ :]+"};/pxed/{print " - " $1 " " $4 ":" $5}'
+		        exit 1;
+    	    fi
+	        echo "$appname: nothing to show here, yet"; exit 1 ;;
     -k| --kill-daemon )
 	    if [[ -f $pidfile && -d /proc/$(<$pidfile) ]]; then
-		die "$appname: daemon killed" -9 $(<$pidfile);
-		rm -rf $pidfile; exit 1;
-            fi
+		    die "$appname: daemon killed" -9 $(<$pidfile);
+		    rm -rf $pidfile; exit 1;
+        fi
 	    echo "$appname: no such process"; exit 1;
 	    ;;
+    -w| --watch ) watch="$2"; shift 2;;  # watch direct file or dir
+    -m| --watch-method) watch_method="$2"; shift 2;; # poll_monitor or inotify_monitor
+    -e| --watch-on-changed) watch_on_changed="$2"; shift 2;;
     -v| --version ) echo "$appname: $(<"$HERE/VERSION")"; exit 1;;
     -h| --help ) usage; exit 1 ;;
     * ) break ;;
@@ -97,18 +146,38 @@ while true; do
 done
 
 if [[ -f $pidfile && -d /proc/$(<$pidfile) ]]; then
-	echo "$appname: already running"; exit 1;
+    echo "$appname: already running"; exit 1;
 fi
 
-if [[ -z $iface || -z $dhcprange || -z $tftproot ]]; then
-	echo "$appname: missing mandatory arguments!"; exit 1;
+if [[ -z $iface ]]; then
+    echo "$appname: missing mandatory argument --interface"; exit 1;
 fi
+
+header
+echo $$ > $pidfile
 
 if [[ ! -z $PXED_DEBUG ]]; then
 	optdel=${opts[@]/--quiet-dhcp}
 	opts=($optdel --log-dhcp);
-else
-	exec 2>/dev/null
+fi
+
+tftproot=${tftproot:="/srv/tftp"}
+if [[ ! -d $tftproot ]]; then
+    echo "$appname: missing $tftproot directory"; exit 1;
+fi
+
+if [[ -z $dhcprange ]]; then
+
+    ip=$(ip a show $iface 2>/dev/null | awk '/inet\s/ {print $2}' )
+    if [[ -z $ip ]]; then
+        echo "$appname: cant determine interface $iface address or one is missing, use -F"
+        exit 1;
+    fi
+
+    hostmin=$(ipcalc $ip -nb | awk '/HostMin:/ {print $2}')
+    hostmax=$(ipcalc $ip -nb | awk '/HostMax:/ {print $2}')
+
+    dhcprange="$hostmin,$hostmax,24h"
 fi
 
 known_ifaces=$(ls -1 /sys/class/net | sed "/$iface/d" | tr -t '\n' ',')
@@ -117,7 +186,17 @@ opts+=(--interface=$iface \
        --dhcp-range=$dhcprange \
        --enable-tftp=$iface \
        --tftp-root=$tftproot \
-       --pid-file=$pidfile \
-       --log-facility=$logfile)
+       --log-facility=$logfile )
 
-exec -a $appname ${HERE}/usr/sbin/dnsmasq "${opts[@]}" 
+if [[ ! -z $watch ]]; then
+
+    if [[ ! $(command -v fswatch) >/dev/null ]]; then
+	    echo "$appname: missing fswatch binary"; exit 1;
+    fi
+    watcher &
+fi
+
+printline "$appname: listening on $iface UDP ${listenaddr:="0.0.0.0"}:67:69 with TFTP root $tftproot with $dhcprange"
+exec -a $appname ${HERE}/usr/sbin/dnsmasq "${opts[@]}" 2>/dev/null
+
+

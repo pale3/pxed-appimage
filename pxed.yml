@@ -2,14 +2,16 @@ app: pxed
 union: true
 
 ingredients:
-  dist: stretch
+  dist: buster
   sources:
-    - deb http://mirror.yandex.ru/debian/ stretch main
+    - deb http://mirror.yandex.ru/debian/ buster main
   packages:
     - dnsmasq
+    - fswatch
+    - ipcalc
 
 script:
-  - echo 1.0 > VERSION
+  - echo 1.1 > VERSION
   - wget -c -O dnsmasq.svg https://upload.wikimedia.org/wikipedia/commons/2/2c/Dnsmasq_icon.svg
   - cat > dnsmasq.desktop <<\EOF
   - [Desktop Entry]
@@ -37,5 +39,16 @@ script:
   - dhcp-script=/var/run/pxed-dhcp-hook
   - EOF
   - ls ../dnsmasq_*.deb | cut -d "_" -f 2 | head -n 1 > dnsmasq-VERSION
+  - ls ../fswatch_*.deb | cut -d "_" -f 2 | head -n 1 > fswatch-VERSION
+  - /bin/date +"%b %d %Y - %H:%M:%S" > pxed-buildtime
   - cp ../../pxed-run AppRun
   - chmod a+x AppRun
+  - rm -r usr/share
+  - rm usr/bin/deb-systemd-*
+  - rm usr/bin/perl5.*
+  - rm -r usr/lib/resolvconf
+  - rm usr/sbin/invoke-rc.d
+  - rm usr/sbin/update-rc.d
+  - rm usr/sbin/service
+  - rm -r lib/systemd
+
