@@ -96,7 +96,7 @@ watcher(){
     fi
 
     printline "fswatch: watching '$watch', using '$watch_method'"
-    /usr/bin/fswatch -m $watch_method $watch | while read entry; do
+    ${HERE}/usr/bin/fswatch -m $watch_method $watch | while read entry; do
 
         if [[ -z $watch_on_changed ]]; then
             printline "fswatch: changed entry '$entry'"
