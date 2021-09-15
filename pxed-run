@@ -171,6 +171,7 @@ if [[ -z $dhcprange ]]; then
     dhcprange="$hostmin,$hostmax,24h"
 fi
 
+printline "$appname: PID: $(<$pidfile), logfile: $logfile"
 known_ifaces=$(ls -1 /sys/class/net | sed "/$iface/d" | tr -t '\n' ',')
 opts+=(--interface=$iface \
        --except-interface=${known_ifaces::-1} \
@@ -188,7 +189,5 @@ if [[ ! -z $watch ]]; then
     watcher &
 fi
 
-printline "$appname: PID: $(<$pidfile), logfile: $logfile"
 printline "$appname: listening on $iface UDP ${listenaddr:="0.0.0.0"}:67:69 with TFTP root $tftproot with $dhcprange"
-
 exec -a $appname ${HERE}/usr/sbin/dnsmasq "${opts[@]}" 2>/dev/null
