@@ -1,10 +1,13 @@
 # pxed-appimage
 
 Appimage wrapper around dnsmasq DHCP/TFTP sets related to network image bootup. It act on
-DHCP VENDORCLASS option and after appropriate file. Currenly it is adjusted to my tagset, 
+DHCP VENDORCLASS option and later on appropriate file. Currenly it is adjusted to my tagset,
 but it can easly be changed within pxed.yml
 
 In nutshell, we are just controling how dnsmasq is acting on frames, simple as that
+
+# Override DHCP/TFTP script by using
+* PXED_DHCP_SCRIPT="/path/to/my/script" pxed -i usb0
 
 # Use this 
 * If you want to get rid of ISC-DHCP & TFTP-HPA

@@ -22,6 +22,13 @@ script:
   - Categories=Development;
   - Icon=dnsmasq
   - EOF
+  - cat > etc/pxed-dhcp-hook <<\EOF
+  - #! /bin/bash
+  - if [[ $1 == "tftp" ]]; then
+  -   echo "[$(/bin/date +"%b %d %H:%M:%S")] tftp: we sent $4 of $2 bytes to $3"
+  - fi
+  - EOF
+  - chmod +x etc/pxed-dhcp-hook
   - cat > etc/pxed.conf <<\EOF
   - port=0
   - no-resolv
@@ -36,7 +43,6 @@ script:
   - dhcp-boot=tag:stage2,u-boot.img
   - dhcp-boot=tag:stage3,image-ramdisk.itb
   - tftp-no-blocksize
-  - dhcp-script=/var/run/pxed-dhcp-hook
   - EOF
   - ls ../dnsmasq_*.deb | cut -d "_" -f 2 | head -n 1 > dnsmasq-VERSION
   - ls ../fswatch_*.deb | cut -d "_" -f 2 | head -n 1 > fswatch-VERSION

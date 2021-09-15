@@ -21,15 +21,6 @@ export XDG_DATA_DIRS="${HERE}"/usr/share/:"${XDG_DATA_DIRS}"
 postportem(){ rm -f $pidfile;}
 trap postportem SIGINT SIGTERM ERR
 
-cat << 'EOF' > /var/run/pxed-dhcp-hook
-#! /bin/bash
-if [[ $1 == "tftp" ]]; then
-	echo "[$(/bin/date +"%b %d %H:%M:%S")] tftp: we sent $4 of $2 bytes to $3"
-fi
-EOF
-
-chmod +x /var/run/pxed-dhcp-hook
-
 printline(){ echo "[$(/bin/date +"%b %d %H:%M:%S")] $1"; }
 
 die(){
@@ -186,7 +177,8 @@ opts+=(--interface=$iface \
        --dhcp-range=$dhcprange \
        --enable-tftp=$iface \
        --tftp-root=$tftproot \
-       --log-facility=$logfile )
+       --log-facility=$logfile \
+       --dhcp-script="${PXED_DHCP_SCRIPT:=$HERE/etc/pxed-dhcp-hook}" )
 
 if [[ ! -z $watch ]]; then
 
@@ -196,7 +188,7 @@ if [[ ! -z $watch ]]; then
     watcher &
 fi
 
+printline "$appname: PID: $(<$pidfile), logfile: $logfile"
 printline "$appname: listening on $iface UDP ${listenaddr:="0.0.0.0"}:67:69 with TFTP root $tftproot with $dhcprange"
+
 exec -a $appname ${HERE}/usr/sbin/dnsmasq "${opts[@]}" 2>/dev/null
-
-
