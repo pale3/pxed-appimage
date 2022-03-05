@@ -18,8 +18,7 @@ export PATH="${HERE}"/usr/bin/:"${HERE}"/usr/sbin/:"${HERE}"/usr/games/:"${HERE}
 export LD_LIBRARY_PATH="${HERE}"/usr/lib/:"${HERE}"/usr/lib/i386-linux-gnu/:"${HERE}"/usr/lib/x86_64-linux-gnu/:"${HERE}"/usr/lib32/:"${HERE}"/usr/lib64/:"${HERE}"/lib/:"${HERE}"/lib/i386-linux-gnu/:"${HERE}"/lib/x86_64-linux-gnu/:"${HERE}"/lib32/:"${HERE}"/lib64/:"${LD_LIBRARY_PATH}"
 export XDG_DATA_DIRS="${HERE}"/usr/share/:"${XDG_DATA_DIRS}"
 
-postportem(){ rm -f $pidfile;}
-trap postportem SIGINT SIGTERM ERR
+trap exit SIGINT SIGTERM ERR
 
 printline(){ echo "[$(/bin/date +"%b %d %H:%M:%S")] $1"; }
 
@@ -95,9 +94,9 @@ watcher(){
         fi
 
         printline "fswatch: changed entry '$entry'"
-        printline "fswatch: executing '$watch_on_changed'"
+        printline "fswatch: exec '$watch_on_changed'"
         eval $watch_on_changed
-        printline "fswatch: execution returned $?"
+        printline "fswatch: exec returned $?"
     done
 }
 
