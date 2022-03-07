@@ -11,7 +11,7 @@ ingredients:
     - ipcalc
 
 script:
-  - echo 1.1 > VERSION
+  - echo 1.5 > VERSION
   - wget -c -O dnsmasq.svg https://upload.wikimedia.org/wikipedia/commons/2/2c/Dnsmasq_icon.svg
   - cat > dnsmasq.desktop <<\EOF
   - [Desktop Entry]
@@ -25,7 +25,9 @@ script:
   - cat > etc/pxed-dhcp-hook <<\EOF
   - #! /bin/bash
   - if [[ $1 == "tftp" ]]; then
-  -   echo "[$(/bin/date +"%b %d %H:%M:%S")] tftp: we sent $4 of $2 bytes to $3"
+  -   file_epoh=$(/bin/stat $4 --format=%Z)
+  -   mtime=$(/bin/date --date @${file_epoh} +"%b %d %H:%M:%S")
+  -   echo "[$(/bin/date +"%b %d %H:%M:%S")] tftp: we sent $4 with mtime [$mtime] of $2 bytes to $3"
   - fi
   - EOF
   - chmod +x etc/pxed-dhcp-hook

@@ -54,9 +54,7 @@ $appname: <opt> <arg>
  -a --listen-address   listen on IP address, E.g 10.10.10.1
  -F --dhcp-range       DHCP offer range with lease time, E.g 10.10.10.2-10.10.10.100,24h, default --interface CIDR
  -T --tftp-root        TFTP root dir location, default /srv/tftp
- -D --daemon           start as daemon
  -s --status           print status of app
- -k --kill-daemon      kill running daemon
  -v --version          print version
  -h --help             this screen
 
@@ -64,6 +62,7 @@ fswatch: (optional)
  -w --watch*           path or file to watch, can use glob E.g /path/to/*.tar
  -m --watch-method     possible methods are default poll_monitor or inotify_monitor, default poll_monitor
  -e --watch-on-changed on watch item's change do something
+ -u --uncompress       uncompress to \$tftproot (works only when --watch is used)
 
 info:
  - requires root privileges
@@ -78,6 +77,14 @@ Examples:
 EOL
 }
 
+fisrtsync(){
+
+    printline "fswatch: syncing to $tftproot quietly"
+    src=$(ls -1 $watch)
+    cat $src | sudo -u $SUDO_USER tar -xf - -C $tftproot
+    printline "fswatch: syncing returned $?"
+}
+
 watcher(){
 
     watch_method=${watch_method:="poll_monitor"}
@@ -86,17 +93,23 @@ watcher(){
     fi
 
     printline "fswatch: watching '$watch', using '$watch_method'"
+    fisrtsync &
     ${HERE}/usr/bin/fswatch -m $watch_method $watch | while read entry; do
 
-        if [[ -z $watch_on_changed ]]; then
+        if [[ -z $watch_on_changed && $uncompress != 1 ]]; then
             printline "fswatch: changed entry '$entry'"
             continue
         fi
 
         printline "fswatch: changed entry '$entry'"
-        printline "fswatch: exec '$watch_on_changed'"
-        eval $watch_on_changed
-        printline "fswatch: exec returned $?"
+        if (( $uncompress == 1 )); then
+            cat $entry | sudo -u $SUDO_USER tar -xf - -C $tftproot
+        else
+            printline "fswatch: exec '$watch_on_changed'"
+            eval $watch_on_changed
+        fi
+
+        printline "fswatch: returned $?"
     done
 }
 
@@ -107,10 +120,6 @@ while true; do
     -a| --listen-address) listenaddr=$(is_arg_valid $1 "$2"); opts+=(--listen-address=$listenaddr); shift 2 ;;
     -F| --dhcp-range) dhcprange=$(is_arg_valid $1 "$2"); shift 2;;
     -T| --tftp-root) tftproot=$(is_arg_valid $1 "$2"); shift 2 ;;
-    -D| --daemon ) # this arg doesnt exist within dnsmasq
-	    	optdel=${opts[@]/--no-daemon}
-	    	opts=($optdel);
-		break ;;
     -s| --status )
     	    if [[ -f $pidfile ]]; then
 	    	    echo "pid: $(<$pidfile)";
@@ -119,16 +128,10 @@ while true; do
 		        exit 1;
     	    fi
 	        echo "$appname: nothing to show here, yet"; exit 1 ;;
-    -k| --kill-daemon )
-	    if [[ -f $pidfile && -d /proc/$(<$pidfile) ]]; then
-		    die "$appname: daemon killed" -9 $(<$pidfile);
-		    rm -rf $pidfile; exit 1;
-        fi
-	    echo "$appname: no such process"; exit 1;
-	    ;;
     -w| --watch ) watch="$2"; shift 2;;  # watch direct file or dir
     -m| --watch-method) watch_method="$2"; shift 2;; # poll_monitor or inotify_monitor
     -e| --watch-on-changed) watch_on_changed="$2"; shift 2;;
+    -u| --uncompress) uncompress=1; shift 1;;
     -v| --version ) echo "$appname: $(<"$HERE/VERSION")"; exit 1;;
     -h| --help ) usage; exit 1 ;;
     * ) break ;;
@@ -144,7 +147,6 @@ if [[ -z $iface ]]; then
 fi
 
 header
-echo $$ > $pidfile
 
 if [[ ! -z $PXED_DEBUG ]]; then
 	optdel=${opts[@]/--quiet-dhcp}
@@ -156,21 +158,36 @@ if [[ ! -d $tftproot ]]; then
     echo "$appname: missing $tftproot directory"; exit 1;
 fi
 
-if [[ -z $dhcprange ]]; then
-
-    ip=$(ip a show $iface 2>/dev/null | awk '/inet\s/ {print $2}' )
-    if [[ -z $ip ]]; then
-        echo "$appname: cant determine interface $iface address or one is missing, use -F"
-        exit 1;
-    fi
-
-    hostmin=$(ipcalc $ip -nb | awk '/HostMin:/ {print $2}')
-    hostmax=$(ipcalc $ip -nb | awk '/HostMax:/ {print $2}')
-
-    dhcprange="$hostmin,$hostmax,24h"
+if [[ ! -z $uncompress  && ! -z $watch_on_changed ]]; then
+    echo "$appname: cant combine --uncompress and --watch-on-changed"; exit 1
 fi
 
+echo $$ > $pidfile
 printline "$appname: PID: $(<$pidfile), logfile: $logfile"
+
+if [[ -z $dhcprange ]]; then
+
+    printed=0
+    while true; do
+
+        ip=$(ip a show $iface 2>/dev/null | awk '/inet\s/ {print $2}')
+        if [[ -z $ip ]]; then
+            if (( $printed != 1)); then
+                printline "$appname: interface $iface not available. Waiting for $iface"
+            fi
+            printed=1
+            sleep 2
+            continue
+        fi
+
+        hostmin=$(ipcalc $ip -nb | awk '/HostMin:/ {print $2}')
+        hostmax=$(ipcalc $ip -nb | awk '/HostMax:/ {print $2}')
+
+        dhcprange="$hostmin,$hostmax,24h"
+        break
+    done
+fi
+
 known_ifaces=$(ls -1 /sys/class/net | sed "/$iface/d" | tr -t '\n' ',')
 opts+=(--interface=$iface \
        --except-interface=${known_ifaces::-1} \
@@ -183,7 +200,7 @@ opts+=(--interface=$iface \
 if [[ ! -z $watch ]]; then
 
     if [[ ! $(command -v fswatch) >/dev/null ]]; then
-	    echo "$appname: missing fswatch binary"; exit 1;
+        echo "$appname: missing fswatch binary"; exit 1;
     fi
     watcher &
 fi
