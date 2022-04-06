@@ -11,7 +11,7 @@ ingredients:
     - ipcalc
 
 script:
-  - echo 1.5 > VERSION
+  - echo 1.6 > VERSION
   - wget -c -O dnsmasq.svg https://upload.wikimedia.org/wikipedia/commons/2/2c/Dnsmasq_icon.svg
   - cat > dnsmasq.desktop <<\EOF
   - [Desktop Entry]

@@ -79,8 +79,9 @@ EOL
 
 fisrtsync(){
 
-    printline "fswatch: syncing to $tftproot quietly"
-    src=$(ls -1 $watch)
+    local src=$(ls -1r $watch|head -n 1)
+
+    printline "fswatch: syncing to $tftproot $src"
     cat $src | sudo -u $SUDO_USER tar -xf - -C $tftproot
     printline "fswatch: syncing returned $?"
 }
@@ -92,24 +93,35 @@ watcher(){
         echo "$appname: invalid --watch-method specified!"; exit 1;
     fi
 
+    dr=$(dirname $watch)
     printline "fswatch: watching '$watch', using '$watch_method'"
-    fisrtsync &
-    ${HERE}/usr/bin/fswatch -m $watch_method $watch | while read entry; do
+    ${HERE}/usr/bin/fswatch -r -m $watch_method $dr | while read entry; do
 
         if [[ -z $watch_on_changed && $uncompress != 1 ]]; then
-            printline "fswatch: changed entry '$entry'"
+            printline "fswatch: changed '$entry', but no action given"
             continue
         fi
 
-        printline "fswatch: changed entry '$entry'"
+        # check if this is file
+        if [[ ! -f $entry ]]; then
+            continue
+        fi
+
         if (( $uncompress == 1 )); then
+
+            # entry has to match watchraw partially
+            if [[ $entry != *${watchraw}* ]]; then
+                continue
+            fi
+
+            printline "fswatch: changed '$entry', exec tar -xf -C $tftproot"
             cat $entry | sudo -u $SUDO_USER tar -xf - -C $tftproot
         else
-            printline "fswatch: exec '$watch_on_changed'"
+            printline "fswatch: changed '$entry', exec '$watch_on_changed'"
             eval $watch_on_changed
         fi
 
-        printline "fswatch: returned $?"
+        printline "fswatch: exec returned $?"
     done
 }
 
@@ -128,7 +140,7 @@ while true; do
 		        exit 1;
     	    fi
 	        echo "$appname: nothing to show here, yet"; exit 1 ;;
-    -w| --watch ) watch="$2"; shift 2;;  # watch direct file or dir
+    -w| --watch ) watch="$2"; watchraw=$(set -f; basename $2); shift 2;;  # watch direct file or dir
     -m| --watch-method) watch_method="$2"; shift 2;; # poll_monitor or inotify_monitor
     -e| --watch-on-changed) watch_on_changed="$2"; shift 2;;
     -u| --uncompress) uncompress=1; shift 1;;
@@ -202,6 +214,8 @@ if [[ ! -z $watch ]]; then
     if [[ ! $(command -v fswatch) >/dev/null ]]; then
         echo "$appname: missing fswatch binary"; exit 1;
     fi
+
+    fisrtsync
     watcher &
 fi
 
