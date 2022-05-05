@@ -117,10 +117,11 @@ watcher(){
             continue
         fi
 
+        bn=$(basename $entry)
         if (( $uncompress )); then
 
             # entry has to match watchraw partially
-            if [[ $entry != *${watchraw}* ]]; then
+            if [[ $bn != *${watchraw}* ]]; then
                 continue
             fi
 
@@ -128,11 +129,10 @@ watcher(){
             cat $entry | sudo -u $SUDO_USER tar -xf - -C $tftproot
         elif (( $copy )); then
 
-            if [[ $entry != *${watchraw}* ]]; then
+            if [[ $bn != *${watchraw}* ]]; then
                 continue
             fi
 
-            bn=$(basename $entry)
             printline "fswatch: changed '$entry', exec cat to $bn"
             sudo -u $SUDO_USER cat $entry > $tftproot/$bn
         else
