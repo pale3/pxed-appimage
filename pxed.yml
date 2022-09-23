@@ -2,16 +2,17 @@ app: pxed
 union: true
 
 ingredients:
-  dist: buster
+  dist: stretch
   sources:
-    - deb http://mirror.yandex.ru/debian/ buster main
+    - deb http://mirror.yandex.ru/debian/ stretch main
   packages:
     - dnsmasq
-    - fswatch
     - ipcalc
+  debs:
+    - $(pwd)/fswatch_14.0~bpo9+_amd64.deb
 
 script:
-  - echo 1.6 > VERSION
+  - echo 1.7 > VERSION
   - wget -c -O dnsmasq.svg https://upload.wikimedia.org/wikipedia/commons/2/2c/Dnsmasq_icon.svg
   - cat > dnsmasq.desktop <<\EOF
   - [Desktop Entry]
