@@ -84,7 +84,12 @@ EOL
 
 fisrtsync(){
 
-    local src=$(ls -1r $watch|head -n 1)
+    set -o pipefail
+    local src=$(ls -1r $watch 2>/dev/null | head -n 1)
+
+    if ! [[ $src ]]; then
+        printline "fswatch: firstsync skipped, no such file or dir" && return
+    fi
 
     printline "fswatch: syncing to $tftproot $src"
     if ! (( $copy )); then 
@@ -164,7 +169,7 @@ main_pxed(){
     	opts=($optdel --log-dhcp);
     fi
 
-
+    watcher_started=0
     if [[ -z $dhcprange ]]; then
     
         printed=0
@@ -173,7 +178,8 @@ main_pxed(){
             ip=$(ip a show $iface 2>/dev/null | awk '/inet / {print $2}')
             if [[ -z $ip ]]; then
                 if (( $printed != 1)); then
-                    printline "$appname: interface $iface not available. Waiting for $iface"
+                    printline "$appname: interface $iface not available. Waiting for $iface in background"
+                    main_watcher &
                 fi
                 printed=1
                 sleep 2
@@ -197,7 +203,6 @@ main_pxed(){
            --log-facility=$logfile \
            --dhcp-script="${PXED_DHCP_SCRIPT:=$HERE/etc/pxed-dhcp-hook}" )
 
-    main_watcher &
 
     printline "$appname: listening on $iface UDP ${listenaddr:="0.0.0.0"}:67:69 with TFTP root $tftproot with $dhcprange"
     exec -a $appname ${HERE}/usr/sbin/dnsmasq "${opts[@]}" 2>/dev/null

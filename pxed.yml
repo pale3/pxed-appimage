@@ -12,7 +12,7 @@ ingredients:
     - $(pwd)/fswatch_14.0~bpo9+_amd64.deb
 
 script:
-  - echo 1.7 > VERSION
+  - echo 1.8 > VERSION
   - wget -c -O dnsmasq.svg https://upload.wikimedia.org/wikipedia/commons/2/2c/Dnsmasq_icon.svg
   - cat > dnsmasq.desktop <<\EOF
   - [Desktop Entry]
@@ -48,7 +48,6 @@ script:
   - tftp-no-blocksize
   - EOF
   - ls ../dnsmasq_*.deb | cut -d "_" -f 2 | head -n 1 > dnsmasq-VERSION
-  - ls ../fswatch_*.deb | cut -d "_" -f 2 | head -n 1 > fswatch-VERSION
   - /bin/date +"%b %d %Y - %H:%M:%S" > pxed-buildtime
   - cp ../../pxed-run AppRun
   - chmod a+x AppRun
